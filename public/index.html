@@ -1,0 +1,175 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GraphQL Library</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>GraphQL Library</h1>
+        <p>Explore authors and their books</p>
+    </header>
+
+    <main>
+        <section class="panel">
+            <h2>Authors and Books</h2>
+            <button onclick="loadAuthors()">Refresh Authors</button>
+            <p id="status"></p>
+            <div id="authors"></div>
+        </section>
+
+        <section class="panel">
+            <h2>Add a New Book</h2>
+            <form id="bookForm">
+                <label for="title">Book Title</label>
+                <input id="title" type="text" required
+                       placeholder="Enter book title">
+
+                <label for="year">Publication Year</label>
+                <input id="year" type="number" required
+                       min="1" max="9999" placeholder="2026">
+
+                <label for="authorId">Author ID</label>
+                <input id="authorId" type="number" required min="1"
+                       placeholder="Enter author ID">
+
+                <button type="submit">Add Book</button>
+            </form>
+            <p id="message"></p>
+        </section>
+    </main>
+
+    <script>
+        const API_URL = "http://localhost:4000/";
+
+        async function graphqlRequest(query, variables = {}) {
+            const response = await fetch(API_URL, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ query, variables })
+            });
+
+            const result = await response.json();
+
+            if (!response.ok || result.errors) {
+                throw new Error(
+                    result.errors?.map(e => e.message).join(", ")
+                    || "Request failed"
+                );
+            }
+
+            return result.data;
+        }
+
+        async function loadAuthors() {
+            const authorsDiv = document.getElementById("authors");
+            const status = document.getElementById("status");
+
+            status.textContent = "Loading authors...";
+            authorsDiv.replaceChildren();
+
+            try {
+                const data = await graphqlRequest(`
+                    query {
+                        authors {
+                            id
+                            name
+                            country
+                            books {
+                                id
+                                title
+                                year
+                            }
+                        }
+                    }
+                `);
+
+                data.authors.forEach(author => {
+                    const card = document.createElement("article");
+                    card.className = "author-card";
+
+                    const heading = document.createElement("h3");
+                    heading.textContent = author.name;
+                    card.appendChild(heading);
+
+                    const country = document.createElement("p");
+                    country.textContent =
+                        `Author ID: ${author.id} | Country: ${author.country || "Unknown"}`;
+                    card.appendChild(country);
+
+                    const bookHeading = document.createElement("h4");
+                    bookHeading.textContent = "Books";
+                    card.appendChild(bookHeading);
+
+                    if (author.books.length === 0) {
+                        const empty = document.createElement("p");
+                        empty.textContent = "No books yet.";
+                        card.appendChild(empty);
+                    }
+
+                    author.books.forEach(book => {
+                        const item = document.createElement("p");
+                        item.textContent =
+                            `${book.title} (${book.year ?? "Year unknown"})`;
+                        card.appendChild(item);
+                    });
+
+                    authorsDiv.appendChild(card);
+                });
+
+                status.textContent =
+                    `Loaded ${data.authors.length} author(s).`;
+            } catch (error) {
+                status.textContent = "Error: " + error.message;
+            }
+        }
+
+        document.getElementById("bookForm")
+            .addEventListener("submit", async function(event) {
+                event.preventDefault();
+
+                const message = document.getElementById("message");
+                message.textContent = "Adding book...";
+
+                const title = document.getElementById("title").value.trim();
+                const year = Number(document.getElementById("year").value);
+                const authorId = document.getElementById("authorId").value;
+
+                try {
+                    const data = await graphqlRequest(`
+                        mutation AddBook(
+                            $title: String!,
+                            $year: Int!,
+                            $authorId: ID!
+                        ) {
+                            addBook(
+                                title: $title,
+                                year: $year,
+                                authorId: $authorId
+                            ) {
+                                id
+                                title
+                                year
+                            }
+                        }
+                    `, { title, year, authorId });
+
+                    message.textContent =
+                        `Added "${data.addBook.title}" successfully!`;
+
+                    this.reset();
+                    await loadAuthors();
+                } catch (error) {
+                    message.textContent = "Error: " + error.message;
+                }
+            });
+
+        loadAuthors();
+    </script>
+</body>
+</html>
